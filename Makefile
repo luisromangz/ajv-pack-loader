@@ -7,7 +7,7 @@ bin          := $(node_modules)/.bin
 all:
 
 $(node_modules): package.json
-	yarn install --production=false
+	npm install
 
 .PHONY: test
 test: $(node_modules)

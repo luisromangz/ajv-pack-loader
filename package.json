@@ -1,22 +1,22 @@
 {
-  "name": "ajv-pack-loader",
-  "version": "2.0.0",
+  "name": "ajv-pack-merge-loader",
+  "version": "0.0.1",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "make test"
   },
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "ajv": "^4.11.6",
-    "ajv-pack": "^0.2.7",
-    "loader-utils": "^1.0.3"
+    "ajv": "^5.1.6",
+    "ajv-pack": "^0.3.0",
+    "loader-utils": "^1.1.0",
+    "lodash": "^4.17.4"
   },
   "devDependencies": {
     "ava": "^0.19.1",
-    "eslint": "^3.19.0",
-    "eslint-plugin-no-console-log": "^2.0.0",
+    "eslint": "^4.0.0",
     "webpack": "^2.3.3"
   }
 }
