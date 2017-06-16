@@ -1,0 +1,14 @@
+{
+    "$merge": {
+        "source": {
+            "$ref": "./testResources/sample.schema.json"
+        },
+        "with": {
+            "properties": {
+                "hasJob": {
+                    "type": "boolean"
+                }
+            }
+        }
+    }
+}
