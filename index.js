@@ -6,7 +6,7 @@ const fs = require('fs');
 const _ = require('lodash');
 
 function replaceErr(keywords, fieldPaths, requiresObj, packedModule) {
-  let _replaceErr = function(wholeMatch, keyword, fieldPath, index, indexVar, params) {
+  let _replaceErr = function (wholeMatch, keyword, fieldPath, index, indexVar, params) {
     keyword = keyword;
 
     let keywordIdx = keywords.indexOf(keyword);
@@ -95,7 +95,7 @@ function loadMergePart(instance, schema) {
   });
 }
 
-module.exports = function(source, sourceMap) {
+module.exports = function (source, sourceMap) {
   this.cacheable();
 
   const query = Object.assign({}, loaderUtils.getOptions(this), {
@@ -136,13 +136,11 @@ module.exports = function(source, sourceMap) {
     const validate = ajv.compile(schema);
     let packedModule = pack(ajv, validate);
 
-    fs.writeFileSync(__dirname + '/before.js', packedModule);
-
-    // We strip the schema as it is really big.
-
     // We create a simplified version of the schema so we reduce the bundle's size,
     // while not breaking validation code.
-    let simpSchema = { properties: {} };
+    let simpSchema = {
+      properties: {}
+    };
     for (let key in schema.properties) {
       simpSchema.properties[key] = 1;
     }
@@ -153,7 +151,7 @@ module.exports = function(source, sourceMap) {
     let oldPackedModule;
 
     let types = [];
-    let replaceType = function(wholeMatch, typeName) {
+    let replaceType = function (wholeMatch, typeName) {
       let typeIndex = types.indexOf(typeName);
       if (typeIndex === -1) {
         typeIndex = types.push(typeName) - 1;
@@ -166,7 +164,7 @@ module.exports = function(source, sourceMap) {
       packedModule = packedModule.replace(/type\: \'(.*)\'/g, replaceType);
     } while (oldPackedModule !== packedModule);
 
-    let replaceTypeOfEq = function(wholeMatch, varname, operator, typeName) {
+    let replaceTypeOfEq = function (wholeMatch, varname, operator, typeName) {
       let typeIndex = types.indexOf(typeName);
       if (typeIndex === -1) {
         typeIndex = types.push(typeName) - 1;
@@ -200,8 +198,6 @@ module.exports = function(source, sourceMap) {
 
     packedModule = packedModule.replace(/var validate =/,
       `${requiresStr}\nvar ${definitions};\nvar validate = `);
-
-    fs.writeFileSync(__dirname + '/code.js', packedModule);
 
     callback(
       null,
