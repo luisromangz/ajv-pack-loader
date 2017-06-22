@@ -2,12 +2,76 @@
 const Ajv = require('ajv');
 const pack = require('ajv-pack');
 const loaderUtils = require('loader-utils');
-//const addMerge = require('ajv-merge-patch');
 const fs = require('fs');
 const _ = require('lodash');
 
+function replaceErr(keywords, fieldPaths, requiresObj, packedModule) {
+  let _replaceErr = function(wholeMatch, keyword, fieldPath, index, indexVar, params) {
+    keyword = keyword;
+
+    let keywordIdx = keywords.indexOf(keyword);
+    if (keywordIdx === -1) {
+      keywordIdx = keywords.push(keyword) - 1;
+    }
+
+    let pathIdx = fieldPaths.indexOf(fieldPath);
+    if (pathIdx === -1) {
+      pathIdx = fieldPaths.push(fieldPath) - 1;
+    }
+
+    if (indexVar === undefined) {
+      indexVar = -1; // takes less space than undefined.
+    }
+
+    let paramsMatch;
+    let paramsObj = {};
+    let paramsRegexp = /\b(.*)\: (.*?),?\n/g;
+    while ((paramsMatch = paramsRegexp.exec(params)) !== null) {
+      paramsObj[paramsMatch[1]] = paramsMatch[2];
+    }
+
+    let funName = 'g';
+    let requireFile = 'genError';
+    // Instead using the keyword and fieldPath texts (which increases size), we create variables so we can reuse them.
+    if (paramsObj.comparison) {
+      // Comparison case
+      funName = 'gc';
+      params = `${paramsObj.comparison},${paramsObj.limit},${paramsObj.exclusive}`;
+      requireFile = 'genErrorComparison';
+    } else if (paramsObj.type) {
+      funName = 'gt';
+      params = paramsObj.type;
+      requireFile = 'genErrorType';
+    } else if (paramsObj.missingProperty) {
+      funName = 'gmp';
+      params = paramsObj.missingProperty;
+      requireFile = 'genErrorMissingProperty';
+    } else if (paramsObj.additionalProperty) {
+      funName = 'gap';
+      params = paramsObj.additionalProperty;
+      requireFile = 'genErrorAdditionalProperty';
+    }
+    requiresObj[funName] = 'ajv-pack-merge-loader/runtime/' + requireFile;
+
+    return `vErrors= ${funName}(k${keywordIdx},dataPath,fp${pathIdx},${indexVar},${params},vErrors);`;
+  };
+  /**
+   * We replace inline generation of errors with calls to a genError function.
+   */
+  let oldPackedModule;
+  do {
+    oldPackedModule = packedModule;
+    packedModule = packedModule.replace(
+      /var err = {\n.*\: '(.*)',\n.*\:.*?\+ \'?\"?(.*?)\"?\'?(\[?\' \+ (.*) \+ \'\]\')?,\n.*\: .*,\n.*\: ({(.*\n)*?.*})\n.*};\n.*\n.*/g,
+      _replaceErr);
+  } while (oldPackedModule !== packedModule);
+
+  return packedModule;
+}
+
 function loadMergePart(instance, schema) {
-  if (!schema.$ref) {
+  if (!schema.$ref || schema.$ref.indexOf('#') === 0) {
+    // If it's not a ref or it is a local ref we do nothing.
     return schema;
   }
 
@@ -37,6 +101,8 @@ module.exports = function(source, sourceMap) {
   const query = Object.assign({}, loaderUtils.getOptions(this), {
     sourceCode: true,
     addUsedSchema: false,
+    messages: false,
+    allErrors: true,
     v5: true
   });
 
@@ -56,7 +122,7 @@ module.exports = function(source, sourceMap) {
     refPromises.push(loadMergePart(this, schema.$merge.with));
   }
 
-  Promise.all(refPromises).then(function(reffedSchemas) {
+  Promise.all(refPromises).then((reffedSchemas) => {
     if (schema.$merge) {
       // We got the schemas in the reffed schemas array and we manually merge them to avoid
       // ajv snafus.
@@ -68,7 +134,75 @@ module.exports = function(source, sourceMap) {
     }
 
     const validate = ajv.compile(schema);
-    const packedModule = pack(ajv, validate);
+    let packedModule = pack(ajv, validate);
+
+    fs.writeFileSync(__dirname + '/before.js', packedModule);
+
+    // We strip the schema as it is really big.
+
+    // We create a simplified version of the schema so we reduce the bundle's size,
+    // while not breaking validation code.
+    let simpSchema = { properties: {} };
+    for (let key in schema.properties) {
+      simpSchema.properties[key] = 1;
+    }
+
+    simpSchema = JSON.stringify(simpSchema);
+
+    packedModule = packedModule.replace(/validate\.schema = ({\n(.*\n)*});/gm, `validate.schema=${simpSchema};`);
+    let oldPackedModule;
+
+    let types = [];
+    let replaceType = function(wholeMatch, typeName) {
+      let typeIndex = types.indexOf(typeName);
+      if (typeIndex === -1) {
+        typeIndex = types.push(typeName) - 1;
+      }
+      return `type: t${typeIndex}`;
+    };
+
+    do {
+      oldPackedModule = packedModule;
+      packedModule = packedModule.replace(/type\: \'(.*)\'/g, replaceType);
+    } while (oldPackedModule !== packedModule);
+
+    let replaceTypeOfEq = function(wholeMatch, varname, operator, typeName) {
+      let typeIndex = types.indexOf(typeName);
+      if (typeIndex === -1) {
+        typeIndex = types.push(typeName) - 1;
+      }
+      return `typeof ${varname} ${operator} t${typeIndex}`;
+    };
+    do {
+      oldPackedModule = packedModule;
+      packedModule = packedModule.replace(/typeof (.*) (...) "(.*?)"/g, replaceTypeOfEq);
+    } while (oldPackedModule !== packedModule);
+
+    let keywords = [];
+    let fieldPaths = [];
+    let requires = {};
+    packedModule = replaceErr(keywords, fieldPaths, requires, packedModule);
+
+    // We require the genError function into the module.
+
+    let requiresArray = [];
+    for (let requireVar in requires) {
+      requiresArray.push(`${requireVar} = require('${requires[requireVar]}')`);
+    }
+    let requiresStr = 'var ' + requiresArray.join(',') + ';';
+
+    // We add variable declaration for error keywords, dataPaths and types as we reuse them a lot.
+    let declareKeywordsStr = keywords.map((keyword, index) => `k${index}='${keyword}'`).join(',');
+    let declarePaths = fieldPaths.map((path, index) => `fp${index}='${path}'`).join(',');
+    let declareTypes = types.map((type, index) => `t${index}='${type}'`).join(',');
+
+    let definitions = [declareKeywordsStr, declarePaths, declareTypes].join(',');
+
+    packedModule = packedModule.replace(/var validate =/,
+      `${requiresStr}\nvar ${definitions};\nvar validate = `);
+
+    fs.writeFileSync(__dirname + '/code.js', packedModule);
+
     callback(
       null,
       packedModule,
