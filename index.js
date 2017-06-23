@@ -136,6 +136,10 @@ module.exports = function (source, sourceMap) {
     const validate = ajv.compile(schema);
     let packedModule = pack(ajv, validate);
 
+    fs.writeFileSync(__dirname + '/before.js', packedModule);
+
+    // We strip the schema as it is really big.
+
     // We create a simplified version of the schema so we reduce the bundle's size,
     // while not breaking validation code.
     let simpSchema = {
@@ -198,6 +202,8 @@ module.exports = function (source, sourceMap) {
 
     packedModule = packedModule.replace(/var validate =/,
       `${requiresStr}\nvar ${definitions};\nvar validate = `);
+
+    fs.writeFileSync(__dirname + '/code.js', packedModule);
 
     callback(
       null,
