@@ -1,7 +1,7 @@
-module.exports = function genErrors(keyword, dataPath, fieldPath, index, params, vErrors) {
+module.exports = function genErrors(keyword, dataPath, fieldPath, params, vErrors) {
   var err = {
     keyword: keyword,
-    dataPath: (dataPath || '') + fieldPath + (index !== -1 ? '[' + index + ']' : ''),
+    dataPath: (dataPath || '') + fieldPath,
     params: params
   };
   if (!vErrors) vErrors = [err];

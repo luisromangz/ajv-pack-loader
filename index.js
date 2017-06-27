@@ -5,22 +5,13 @@ const loaderUtils = require('loader-utils');
 const fs = require('fs');
 const _ = require('lodash');
 
-function replaceErr(keywords, fieldPaths, requiresObj, packedModule) {
-  let _replaceErr = function (wholeMatch, keyword, fieldPath, index, indexVar, params) {
+function replaceErr(keywords, requiresObj, packedModule) {
+  let _replaceErr = function(wholeMatch, keyword, fieldPath, params) {
     keyword = keyword;
 
     let keywordIdx = keywords.indexOf(keyword);
     if (keywordIdx === -1) {
       keywordIdx = keywords.push(keyword) - 1;
-    }
-
-    let pathIdx = fieldPaths.indexOf(fieldPath);
-    if (pathIdx === -1) {
-      pathIdx = fieldPaths.push(fieldPath) - 1;
-    }
-
-    if (indexVar === undefined) {
-      indexVar = -1; // takes less space than undefined.
     }
 
     let paramsMatch;
@@ -53,7 +44,7 @@ function replaceErr(keywords, fieldPaths, requiresObj, packedModule) {
     }
     requiresObj[funName] = 'ajv-pack-merge-loader/runtime/' + requireFile;
 
-    return `vErrors= ${funName}(k${keywordIdx},dataPath,fp${pathIdx},${indexVar},${params},vErrors);`;
+    return `vErrors= ${funName}(k${keywordIdx},dataPath, ${fieldPath},${params},vErrors);`;
   };
   /**
    * We replace inline generation of errors with calls to a genError function.
@@ -62,7 +53,7 @@ function replaceErr(keywords, fieldPaths, requiresObj, packedModule) {
   do {
     oldPackedModule = packedModule;
     packedModule = packedModule.replace(
-      /var err = {\n.*\: '(.*)',\n.*\:.*?\+ \'?\"?(.*?)\"?\'?(\[?\' \+ (.*) \+ \'\]\')?,\n.*\: .*,\n.*\: ({(.*\n)*?.*})\n.*};\n.*\n.*/g,
+      /var err = {\n.*\: '(.*)',\n.*\: .*? \+ (.*)?,\n.*\: .*,\n.*\: ({(.*\n)*?.*})\n.*};\n.*\n.*/g,
       _replaceErr);
   } while (oldPackedModule !== packedModule);
 
@@ -95,7 +86,7 @@ function loadMergePart(instance, schema) {
   });
 }
 
-module.exports = function (source, sourceMap) {
+module.exports = function(source, sourceMap) {
   this.cacheable();
 
   const query = Object.assign({}, loaderUtils.getOptions(this), {
@@ -142,9 +133,7 @@ module.exports = function (source, sourceMap) {
 
     // We create a simplified version of the schema so we reduce the bundle's size,
     // while not breaking validation code.
-    let simpSchema = {
-      properties: {}
-    };
+    let simpSchema = { properties: {} };
     for (let key in schema.properties) {
       simpSchema.properties[key] = 1;
     }
@@ -155,7 +144,7 @@ module.exports = function (source, sourceMap) {
     let oldPackedModule;
 
     let types = [];
-    let replaceType = function (wholeMatch, typeName) {
+    let replaceType = function(wholeMatch, typeName) {
       let typeIndex = types.indexOf(typeName);
       if (typeIndex === -1) {
         typeIndex = types.push(typeName) - 1;
@@ -168,7 +157,7 @@ module.exports = function (source, sourceMap) {
       packedModule = packedModule.replace(/type\: \'(.*)\'/g, replaceType);
     } while (oldPackedModule !== packedModule);
 
-    let replaceTypeOfEq = function (wholeMatch, varname, operator, typeName) {
+    let replaceTypeOfEq = function(wholeMatch, varname, operator, typeName) {
       let typeIndex = types.indexOf(typeName);
       if (typeIndex === -1) {
         typeIndex = types.push(typeName) - 1;
@@ -181,9 +170,8 @@ module.exports = function (source, sourceMap) {
     } while (oldPackedModule !== packedModule);
 
     let keywords = [];
-    let fieldPaths = [];
     let requires = {};
-    packedModule = replaceErr(keywords, fieldPaths, requires, packedModule);
+    packedModule = replaceErr(keywords, requires, packedModule);
 
     // We require the genError function into the module.
 
@@ -195,10 +183,9 @@ module.exports = function (source, sourceMap) {
 
     // We add variable declaration for error keywords, dataPaths and types as we reuse them a lot.
     let declareKeywordsStr = keywords.map((keyword, index) => `k${index}='${keyword}'`).join(',');
-    let declarePaths = fieldPaths.map((path, index) => `fp${index}='${path}'`).join(',');
     let declareTypes = types.map((type, index) => `t${index}='${type}'`).join(',');
 
-    let definitions = [declareKeywordsStr, declarePaths, declareTypes].join(',');
+    let definitions = [declareKeywordsStr, declareTypes].join(',');
 
     packedModule = packedModule.replace(/var validate =/,
       `${requiresStr}\nvar ${definitions};\nvar validate = `);
