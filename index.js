@@ -33,10 +33,6 @@ function replaceErr(keywords, requiresObj, packedModule) {
       funName = 'gt';
       params = paramsObj.type;
       requireFile = 'genErrorType';
-    } else if (paramsObj.missingProperty) {
-      funName = 'gmp';
-      params = paramsObj.missingProperty;
-      requireFile = 'genErrorMissingProperty';
     } else if (paramsObj.additionalProperty) {
       funName = 'gap';
       params = paramsObj.additionalProperty;
